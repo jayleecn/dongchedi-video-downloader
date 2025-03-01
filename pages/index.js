@@ -199,6 +199,240 @@ export default function Home() {
           <small>免责声明：本工具不存储任何视频内容，所有内容的版权归原作者所有。请尊重版权并遵守相关法律法规。</small>
         </p>
       </footer>
+
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+        
+        html, body {
+          font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+          font-size: 16px;
+          line-height: 1.4;
+        }
+        
+        .container {
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 10px 15px;
+        }
+        
+        .header {
+          text-align: center;
+          margin-bottom: 15px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid #eee;
+        }
+        
+        .header h1 {
+          font-size: 1.8rem;
+          margin-bottom: 5px;
+          color: #1a73e8;
+        }
+        
+        .header p {
+          color: #666;
+          font-size: 0.9rem;
+        }
+        
+        main {
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+        }
+        
+        .form {
+          margin-bottom: 10px;
+        }
+        
+        .form form {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        
+        .input-group {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+        
+        .input-group label {
+          font-weight: 500;
+          font-size: 0.9rem;
+        }
+        
+        .input-group input {
+          padding: 8px 10px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+        }
+        
+        .input-note {
+          font-size: 0.8rem;
+          color: #666;
+        }
+        
+        .button {
+          background: #1a73e8;
+          color: white;
+          border: none;
+          padding: 8px 15px;
+          border-radius: 4px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+        
+        .button:hover {
+          background: #1558b7;
+        }
+        
+        .loading, .error {
+          padding: 8px 10px;
+          border-radius: 4px;
+          margin-bottom: 10px;
+        }
+        
+        .loading {
+          background: #f0f7ff;
+          color: #1a73e8;
+        }
+        
+        .error {
+          background: #fef2f2;
+          color: #dc2626;
+        }
+        
+        .url-conversion-notice {
+          background: #f0f9ff;
+          padding: 8px 10px;
+          border-radius: 4px;
+          margin-bottom: 10px;
+          font-size: 0.85rem;
+        }
+        
+        .conversion-label {
+          font-weight: 500;
+          margin-right: 5px;
+        }
+        
+        .original-url, .converted-url {
+          font-family: monospace;
+          word-break: break-all;
+        }
+        
+        .arrow {
+          margin: 0 5px;
+          color: #666;
+        }
+        
+        .results {
+          margin-bottom: 10px;
+        }
+        
+        .results h2 {
+          font-size: 1.2rem;
+          margin-bottom: 5px;
+        }
+        
+        .results > p {
+          font-size: 0.9rem;
+          margin-bottom: 8px;
+          color: #444;
+        }
+        
+        .video-sources {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        
+        .video-sources-list {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 8px;
+        }
+        
+        .video-source-item {
+          padding: 8px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .video-source-item:hover {
+          border-color: #1a73e8;
+        }
+        
+        .video-source-item.active {
+          border-color: #1a73e8;
+          background: #f0f7ff;
+        }
+        
+        .source-index {
+          font-weight: 500;
+        }
+        
+        .selected-url-container {
+          margin-top: 5px;
+        }
+        
+        .selected-video-url {
+          padding: 8px;
+          background: #f5f5f5;
+          border-radius: 4px;
+        }
+        
+        .url-text {
+          font-family: monospace;
+          word-break: break-all;
+          font-size: 0.85rem;
+          margin-bottom: 8px;
+        }
+        
+        .selected-video-actions {
+          display: flex;
+          justify-content: center;
+        }
+        
+        .download-instruction {
+          margin-top: 8px;
+          font-size: 0.85rem;
+          color: #666;
+          font-style: italic;
+        }
+        
+        .footer {
+          margin-top: 15px;
+          padding-top: 10px;
+          border-top: 1px solid #eee;
+          font-size: 0.8rem;
+          color: #666;
+          text-align: center;
+        }
+        
+        .footer p {
+          margin-bottom: 5px;
+        }
+        
+        @media (max-width: 600px) {
+          .header h1 {
+            font-size: 1.5rem;
+          }
+          
+          .container {
+            padding: 8px;
+          }
+          
+          .video-sources-list {
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+          }
+        }
+      `}</style>
     </div>
   );
 }
