@@ -90,15 +90,15 @@ export default function Home() {
   return (
     <div className="container">
       <Head>
-        <title>懂车帝视频查看器 - 轻松查看懂车帝视频</title>
-        <meta name="description" content="一个简单易用的懂车帝视频查看工具，支持提取视频链接" />
+        <title>懂车帝视频下载器 - 免费下载懂车帝视频</title>
+        <meta name="description" content="一个简单易用的懂车帝视频下载工具，支持提取视频链接" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
       <header className="header">
-        <h1>懂车帝视频查看器</h1>
-        <p>免费、简单、便捷地查看懂车帝视频</p>
+        <h1>懂车帝视频下载器</h1>
+        <p>免费、简单、便捷地下载懂车帝视频</p>
       </header>
 
       <main>
@@ -155,11 +155,6 @@ export default function Home() {
           <section className="results">
             <h2>视频源列表</h2>
             <p>我们找到了 {videoUrls.length} 个可能的视频源。请选择一个视频源查看。</p>
-            
-            <div className="download-instruction">
-              <p>请点击"查看视频"后，在视频页面右键选择"另存为"或"保存视频"</p>
-            </div>
-            
             <div className="video-sources">
               <div className="video-sources-list">
                 {videoUrls.map((videoUrl, index) => (
@@ -191,12 +186,15 @@ export default function Home() {
                 </div>
               )}
             </div>
+            <div className="download-instruction">
+              <p>请点击"查看视频"后，在视频页面右键选择"另存为"或"保存视频"</p>
+            </div>
           </section>
         )}
       </main>
 
       <footer className="footer">
-        <p>&copy; {new Date().getFullYear()} 懂车帝视频查看器 | 本工具仅用于学习和研究目的</p>
+        <p>&copy; {new Date().getFullYear()} 懂车帝视频下载器 | 本工具仅用于学习和研究目的</p>
         <p>
           <small>免责声明：本工具不存储任何视频内容，所有内容的版权归原作者所有。请尊重版权并遵守相关法律法规。</small>
         </p>
