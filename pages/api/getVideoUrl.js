@@ -1,5 +1,6 @@
 // 导入所需模块
-import { chromium } from 'playwright-chromium';
+import https from 'https';
+import http from 'http';
 import cors from 'cors';
 import { URL } from 'url';
 
@@ -97,36 +98,159 @@ function convertToMobileUrl(inputUrl) {
   }
 }
 
-// 使用fetch API获取视频链接（Vercel环境备用方案）
-async function getVideoUrlWithFetch(url) {
-  try {
-    const videoId = url.split('/').pop().split('?')[0];
-    const apiUrls = [
-      `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
-      `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
-      `https://m.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
-    ];
+// 使用Node.js的http/https模块发送请求
+function makeRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
     
-    let allVideoUrls = [];
+    const defaultOptions = {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      },
+      timeout: 10000
+    };
     
-    for (const apiUrl of apiUrls) {
-      try {
-        console.log(`使用fetch尝试API: ${apiUrl}`);
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-        const videoUrls = findVideoUrlsInObject(data);
-        allVideoUrls = [...allVideoUrls, ...videoUrls];
-      } catch (e) {
-        console.log(`fetch API失败: ${apiUrl}, 错误: ${e.message}`);
+    const requestOptions = { ...defaultOptions, ...options };
+    
+    const req = protocol.request(url, requestOptions, (res) => {
+      // 处理重定向
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        const location = res.headers.location;
+        if (location) {
+          // 确保location是完整URL
+          const redirectUrl = location.startsWith('http') 
+            ? location 
+            : new URL(location, parsedUrl).toString();
+          
+          console.log(`重定向到: ${redirectUrl}`);
+          return makeRequest(redirectUrl, options)
+            .then(resolve)
+            .catch(reject);
+        }
       }
-    }
+      
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        resolve({ 
+          statusCode: res.statusCode,
+          headers: res.headers,
+          data
+        });
+      });
+    });
     
-    // 移除重复项
-    return [...new Set(allVideoUrls)].filter(url => url && url.startsWith('http'));
-  } catch (e) {
-    console.error('使用fetch获取视频URL失败:', e);
-    return [];
+    req.on('error', (error) => {
+      reject(error);
+    });
+    
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('请求超时'));
+    });
+    
+    req.end();
+  });
+}
+
+// 从HTML中提取视频URL
+function extractVideoUrlsFromHtml(html) {
+  const urls = [];
+  
+  // 提取MP4和M3U8链接
+  const mp4Regex = /"(https?:\/\/[^"]*\.mp4[^"]*)"/gi;
+  const m3u8Regex = /"(https?:\/\/[^"]*\.m3u8[^"]*)"/gi;
+  
+  let match;
+  
+  // 提取MP4
+  while ((match = mp4Regex.exec(html)) !== null) {
+    if (match[1] && !urls.includes(match[1])) {
+      urls.push(match[1]);
+    }
   }
+  
+  // 提取M3U8
+  while ((match = m3u8Regex.exec(html)) !== null) {
+    if (match[1] && !urls.includes(match[1])) {
+      urls.push(match[1]);
+    }
+  }
+  
+  return urls;
+}
+
+// 直接从API获取视频URL
+async function getVideoUrlFromAPI(videoId) {
+  const apiUrls = [
+    `https://m.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
+    `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
+    `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`
+  ];
+  
+  let allVideoUrls = [];
+  
+  for (const apiUrl of apiUrls) {
+    try {
+      console.log(`尝试API: ${apiUrl}`);
+      const response = await makeRequest(apiUrl);
+      
+      if (response.statusCode === 200) {
+        try {
+          const data = JSON.parse(response.data);
+          const videoUrls = findVideoUrlsInObject(data);
+          allVideoUrls = [...allVideoUrls, ...videoUrls];
+          
+          if (allVideoUrls.length > 0) {
+            console.log(`通过API找到${allVideoUrls.length}个视频URL`);
+            break;  // 找到了视频URL，跳出循环
+          }
+        } catch (e) {
+          console.log(`API响应不是有效的JSON: ${e.message}`);
+        }
+      } else {
+        console.log(`API请求失败，状态码: ${response.statusCode}`);
+      }
+    } catch (e) {
+      console.error(`API请求出错: ${e.message}`);
+    }
+  }
+  
+  return allVideoUrls;
+}
+
+// 直接从HTML页面获取视频URL
+async function getVideoUrlFromHTML(url) {
+  try {
+    console.log(`尝试从HTML页面获取视频URL: ${url}`);
+    const response = await makeRequest(url);
+    
+    if (response.statusCode === 200) {
+      const html = response.data;
+      const urls = extractVideoUrlsFromHtml(html);
+      
+      if (urls.length > 0) {
+        console.log(`从HTML找到${urls.length}个视频URL`);
+        return urls;
+      } else {
+        console.log('在HTML中未找到视频URL');
+      }
+    } else {
+      console.log(`HTML请求失败，状态码: ${response.statusCode}`);
+    }
+  } catch (e) {
+    console.error(`HTML请求出错: ${e.message}`);
+  }
+  
+  return [];
 }
 
 // 主API处理函数
@@ -161,171 +285,23 @@ export default async function handler(req, res) {
 
   // 转换PC网址为移动端网址
   const mobileUrl = convertToMobileUrl(url);
-  let convertedUrl = mobileUrl;
+  let currentUrl = mobileUrl;
 
   // 开始提取视频URL
   console.log(`开始处理URL: ${url}`);
+  console.log(`转换后URL: ${mobileUrl}`);
   
   try {
-    // 尝试使用fetch API获取视频链接（Vercel环境可能更稳定）
-    console.log('尝试使用fetch API获取视频链接');
-    let videoUrls = await getVideoUrlWithFetch(mobileUrl);
+    // 1. 提取视频ID
+    const videoId = mobileUrl.split('/').pop().split('?')[0];
+    console.log(`提取的视频ID: ${videoId}`);
     
-    // 如果fetch API无法获取视频链接，尝试使用Playwright
+    // 2. 尝试从API获取视频URL
+    let videoUrls = await getVideoUrlFromAPI(videoId);
+    
+    // 3. 如果API方法失败，尝试从HTML页面获取
     if (videoUrls.length === 0) {
-      console.log('Fetch API无法获取视频链接，尝试使用Playwright');
-      try {
-        // 配置Playwright以适应Vercel环境
-        const browser = await chromium.launch({
-          headless: true,
-          // 为Vercel环境添加额外的Chromium args
-          args: [
-            '--disable-dev-shm-usage',
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-gpu'
-          ]
-        });
-        
-        const page = await browser.newPage();
-        
-        // 收集视频请求
-        const playwrightUrls = [];
-        
-        // 监听响应事件
-        page.on('response', async (response) => {
-          const url = response.url();
-          const headers = await response.allHeaders();
-          const contentType = headers['content-type'] || '';
-          
-          if (contentType.includes('video') || url.includes('.mp4') || url.includes('.m3u8')) {
-            playwrightUrls.push(url);
-            console.log(`发现视频URL: ${url}`);
-          }
-        });
-        
-        // 导航到目标页面
-        await page.goto(mobileUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        console.log(`页面已加载，当前URL: ${page.url()}`);
-        
-        // 页面加载可能导致URL变化，记录最终URL
-        convertedUrl = page.url();
-        
-        // 等待页面稳定
-        await page.waitForTimeout(5000);
-        
-        // 执行JavaScript提取视频URL
-        const jsData = await page.evaluate(() => {
-          const videoData = {};
-          
-          // 尝试提取video元素
-          const videoElements = document.querySelectorAll('video');
-          videoData.videoElements = Array.from(videoElements).map(v => ({
-            src: v.src,
-            currentSrc: v.currentSrc,
-            poster: v.poster
-          }));
-          
-          // 尝试提取页面状态
-          if (window.__INITIAL_STATE__) {
-            videoData.initialState = window.__INITIAL_STATE__;
-          }
-          
-          // 查找MP4相关字符串
-          const html = document.documentElement.innerHTML;
-          const mp4Regex = /"(https?:[^"]+\.mp4[^"]*)"/g;
-          const mp4Matches = html.match(mp4Regex) || [];
-          videoData.mp4Matches = mp4Matches.map(m => m.replace(/"/g, ''));
-          
-          // 查找m3u8相关字符串
-          const m3u8Regex = /"(https?:[^"]+\.m3u8[^"]*)"/g;
-          const m3u8Matches = html.match(m3u8Regex) || [];
-          videoData.m3u8Matches = m3u8Matches.map(m => m.replace(/"/g, ''));
-          
-          return videoData;
-        });
-        
-        // 提取JavaScript数据中的视频URL
-        if (jsData.videoElements) {
-          for (const element of jsData.videoElements) {
-            if (element.src && !playwrightUrls.includes(element.src)) {
-              playwrightUrls.push(element.src);
-            }
-            if (element.currentSrc && !playwrightUrls.includes(element.currentSrc)) {
-              playwrightUrls.push(element.currentSrc);
-            }
-          }
-        }
-        
-        // 从mp4Matches和m3u8Matches添加URLs
-        if (jsData.mp4Matches) {
-          for (const url of jsData.mp4Matches) {
-            if (!playwrightUrls.includes(url)) {
-              playwrightUrls.push(url);
-            }
-          }
-        }
-        
-        if (jsData.m3u8Matches) {
-          for (const url of jsData.m3u8Matches) {
-            if (!playwrightUrls.includes(url)) {
-              playwrightUrls.push(url);
-            }
-          }
-        }
-        
-        // 递归搜索initialState中的视频URL
-        if (jsData.initialState) {
-          const stateUrls = findVideoUrlsInObject(jsData.initialState);
-          for (const url of stateUrls) {
-            if (!playwrightUrls.includes(url)) {
-              playwrightUrls.push(url);
-            }
-          }
-        }
-        
-        // 如果没有找到视频URL，尝试查找特定的视频API
-        if (playwrightUrls.length === 0) {
-          const videoId = mobileUrl.split('/').pop().split('?')[0];
-          const apiUrls = [
-            `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
-            `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
-            `https://m.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
-          ];
-          
-          for (const apiUrl of apiUrls) {
-            try {
-              console.log(`尝试获取API: ${apiUrl}`);
-              await page.goto(apiUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-              
-              // 尝试解析JSON响应
-              const textContent = await page.evaluate(() => document.body.textContent);
-              try {
-                const apiData = JSON.parse(textContent);
-                const apiUrls = findVideoUrlsInObject(apiData);
-                for (const url of apiUrls) {
-                  if (!playwrightUrls.includes(url)) {
-                    playwrightUrls.push(url);
-                  }
-                }
-              } catch (e) {
-                console.log('无法解析API响应为JSON');
-              }
-            } catch (e) {
-              console.error(`获取API时出错: ${e.message}`);
-            }
-          }
-        }
-        
-        // 关闭浏览器
-        await browser.close();
-        
-        // 合并两种方法的结果
-        videoUrls = [...videoUrls, ...playwrightUrls];
-      } catch (playwrightError) {
-        console.error('Playwright处理失败:', playwrightError);
-        // 即使Playwright失败，我们仍然有可能从fetch API获取了一些URL
-      }
+      videoUrls = await getVideoUrlFromHTML(mobileUrl);
     }
     
     // 过滤并去重URL
@@ -339,14 +315,31 @@ export default async function handler(req, res) {
         data: {
           videoUrls: filteredUrls,
           original_url: url,
-          convertedUrl: convertedUrl !== url ? convertedUrl : null
+          convertedUrl: currentUrl !== url ? currentUrl : null
         }
       });
     } else {
+      // 生成用于诊断的所有信息
+      const diagnosticInfo = {
+        videoId,
+        apisTried: [
+          `https://m.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
+          `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
+          `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`
+        ],
+        mobileUrl,
+        originalUrl: url
+      };
+      
+      console.log('未找到视频URL，诊断信息:', JSON.stringify(diagnosticInfo, null, 2));
+      
       return res.status(404).json({
         success: false,
         message: '未找到视频URL，请确认链接正确且视频可访问',
-        data: { original_url: url }
+        data: { 
+          original_url: url,
+          diagnostic: diagnosticInfo
+        }
       });
     }
     
