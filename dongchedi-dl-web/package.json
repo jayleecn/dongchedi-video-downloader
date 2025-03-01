@@ -1,0 +1,24 @@
+{
+  "name": "dongchedi-dl-web",
+  "version": "1.0.0",
+  "description": "懂车帝视频下载工具网站",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "keywords": ["dongchedi", "video", "downloader", "nextjs"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "playwright-core": "^1.40.0",
+    "playwright-chromium": "^1.40.0",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5"
+  }
+}
