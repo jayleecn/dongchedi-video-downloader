@@ -46,10 +46,6 @@
 
 4. 在浏览器中打开 [http://localhost:3000](http://localhost:3000)
 
-## 在线部署
-
-可以部署到Vercel或Cloudflare Pages等平台。
-
 ## 使用方法
 
 1. 复制懂车帝视频网页链接
