@@ -7,28 +7,49 @@
 - 分析懂车帝视频页面并提取视频链接
 - 支持在新窗口中查看视频
 - 提供简洁的Web界面
-
-## 项目结构
-
-- `/dongchedi-dl-web` - 基于Next.js的Web应用
-
-## Web应用功能特点
-
-- 支持懂车帝视频链接解析
+- 简洁易用的用户界面
+- 支持解析懂车帝网站和移动端视频链接
+- 自动提取视频地址
 - 自动将PC版网址转换为移动端网址
 - 多种视频源质量选择
-- 简单易用的界面设计
-- 响应式设计，支持移动设备
+- 响应式设计，适配各种设备
+
+## 技术栈
+
+- **前端框架**: Next.js (React)
+- **样式**: CSS
+- **HTTP请求**: Axios
 
 ## 本地运行
 
-```bash
-cd dongchedi-dl-web
-npm install
-npm run dev
-```
+### 前提条件
 
-然后在浏览器中访问 http://localhost:3000
+- Node.js 14.0+ 
+- npm 或 yarn
+
+### 安装步骤
+
+1. 克隆仓库
+   ```bash
+   git clone https://github.com/jayleecn/dongchedi-video-downloader.git
+   cd dongchedi-video-downloader
+   ```
+
+2. 安装依赖
+   ```bash
+   npm install
+   # 或
+   yarn install
+   ```
+
+3. 启动开发服务器
+   ```bash
+   npm run dev
+   # 或
+   yarn dev
+   ```
+
+4. 在浏览器中打开 [http://localhost:3000](http://localhost:3000)
 
 ## 在线部署
 
