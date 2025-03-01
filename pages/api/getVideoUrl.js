@@ -3,6 +3,7 @@ import https from 'https';
 import http from 'http';
 import cors from 'cors';
 import { URL } from 'url';
+import axios from 'axios';
 
 // CORS中间件初始化
 const corsMiddleware = cors({
@@ -42,7 +43,9 @@ function findVideoUrlsInObject(obj, urls = []) {
   if (!obj) return urls;
   
   if (typeof obj === 'string') {
-    if ((obj.includes('.mp4') || obj.includes('.m3u8')) && obj.startsWith('http')) {
+    // 更新正则表达式以匹配更多可能的视频URL格式
+    if ((obj.includes('.mp4') || obj.includes('.m3u8') || obj.includes('/video/') || obj.includes('videoconvert')) && 
+        obj.startsWith('http')) {
       if (!urls.includes(obj)) {
         urls.push(obj);
       }
@@ -110,6 +113,7 @@ function makeRequest(url, options = {}) {
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Referer': 'https://m.dongchedi.com/',
       },
       timeout: 10000
     };
@@ -118,7 +122,7 @@ function makeRequest(url, options = {}) {
     
     const req = protocol.request(url, requestOptions, (res) => {
       // 处理重定向
-      if (res.statusCode === 301 || res.statusCode === 302) {
+      if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
         const location = res.headers.location;
         if (location) {
           // 确保location是完整URL
@@ -165,42 +169,74 @@ function makeRequest(url, options = {}) {
 function extractVideoUrlsFromHtml(html) {
   const urls = [];
   
-  // 提取MP4和M3U8链接
-  const mp4Regex = /"(https?:\/\/[^"]*\.mp4[^"]*)"/gi;
-  const m3u8Regex = /"(https?:\/\/[^"]*\.m3u8[^"]*)"/gi;
+  // 提取更多格式的视频链接
+  const videoRegexPatterns = [
+    /"(https?:\/\/[^"]*\.mp4[^"]*)"/gi,
+    /"(https?:\/\/[^"]*\.m3u8[^"]*)"/gi,
+    /video_url["']?\s*:\s*["']?(https?:\/\/[^"',]+)/gi,
+    /play_url["']?\s*:\s*["']?(https?:\/\/[^"',]+)/gi,
+    /url["']?\s*:\s*["']?(https?:\/\/[^"',]+\.mp4[^"',]*)/gi,
+    /url["']?\s*:\s*["']?(https?:\/\/[^"',]+\.m3u8[^"',]*)/gi,
+    /src["']?\s*[:=]\s*["']?(https?:\/\/[^"',]+\.mp4[^"',]*)/gi,
+    /src["']?\s*[:=]\s*["']?(https?:\/\/[^"',]+\.m3u8[^"',]*)/gi,
+    /"hd"\s*:\s*{[^}]*"url"\s*:\s*"(https?:\/\/[^"]+)"/gi,
+    /"sd"\s*:\s*{[^}]*"url"\s*:\s*"(https?:\/\/[^"]+)"/gi,
+  ];
   
-  let match;
-  
-  // 提取MP4
-  while ((match = mp4Regex.exec(html)) !== null) {
-    if (match[1] && !urls.includes(match[1])) {
-      urls.push(match[1]);
-    }
-  }
-  
-  // 提取M3U8
-  while ((match = m3u8Regex.exec(html)) !== null) {
-    if (match[1] && !urls.includes(match[1])) {
-      urls.push(match[1]);
+  for (const regex of videoRegexPatterns) {
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      if (match[1] && !urls.includes(match[1])) {
+        // 清理URL（有时URL可能包含转义字符）
+        let url = match[1].replace(/\\u002F/g, '/').replace(/\\/g, '');
+        urls.push(url);
+      }
     }
   }
   
   return urls;
 }
 
-// 直接从API获取视频URL
+// 使用axios获取视频URL
+async function getVideoInfoWithAxios(url) {
+  try {
+    console.log(`使用axios请求: ${url}`);
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+        'Referer': 'https://m.dongchedi.com/',
+      },
+      timeout: 10000,
+      maxRedirects: 5,
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error(`Axios请求失败: ${error.message}`);
+    return null;
+  }
+}
+
+// 直接从API获取视频URL (使用多种方法)
 async function getVideoUrlFromAPI(videoId) {
+  // 2024版本的API端点
   const apiUrls = [
+    `https://m.dongchedi.com/apis/video/get_video_play_info/?video_id=${videoId}`,
+    `https://m.dongchedi.com/apis/motor/video/info/?id=${videoId}`,
     `https://m.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
+    `https://www.dongchedi.com/motor/apis/video/info/?id=${videoId}`,
     `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
     `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`
   ];
   
   let allVideoUrls = [];
   
+  // 尝试所有API端点
   for (const apiUrl of apiUrls) {
     try {
       console.log(`尝试API: ${apiUrl}`);
+      
+      // 使用两种不同的请求方法
       const response = await makeRequest(apiUrl);
       
       if (response.statusCode === 200) {
@@ -218,6 +254,18 @@ async function getVideoUrlFromAPI(videoId) {
         }
       } else {
         console.log(`API请求失败，状态码: ${response.statusCode}`);
+        
+        // 尝试使用axios作为备用方法
+        const axiosData = await getVideoInfoWithAxios(apiUrl);
+        if (axiosData) {
+          const videoUrls = findVideoUrlsInObject(axiosData);
+          allVideoUrls = [...allVideoUrls, ...videoUrls];
+          
+          if (allVideoUrls.length > 0) {
+            console.log(`通过axios找到${allVideoUrls.length}个视频URL`);
+            break;
+          }
+        }
       }
     } catch (e) {
       console.error(`API请求出错: ${e.message}`);
@@ -231,10 +279,37 @@ async function getVideoUrlFromAPI(videoId) {
 async function getVideoUrlFromHTML(url) {
   try {
     console.log(`尝试从HTML页面获取视频URL: ${url}`);
-    const response = await makeRequest(url);
     
-    if (response.statusCode === 200) {
-      const html = response.data;
+    // 使用两种方法获取页面
+    let html = null;
+    
+    // 方法1: 使用原生http/https
+    try {
+      const response = await makeRequest(url);
+      if (response.statusCode === 200) {
+        html = response.data;
+      }
+    } catch (error) {
+      console.log(`原生HTTP请求失败: ${error.message}`);
+    }
+    
+    // 方法2: 如果原生http/https失败，尝试使用axios
+    if (!html) {
+      try {
+        const axiosData = await getVideoInfoWithAxios(url);
+        if (axiosData) {
+          if (typeof axiosData === 'string') {
+            html = axiosData;
+          } else {
+            html = JSON.stringify(axiosData);
+          }
+        }
+      } catch (error) {
+        console.log(`Axios请求失败: ${error.message}`);
+      }
+    }
+    
+    if (html) {
       const urls = extractVideoUrlsFromHtml(html);
       
       if (urls.length > 0) {
@@ -244,7 +319,7 @@ async function getVideoUrlFromHTML(url) {
         console.log('在HTML中未找到视频URL');
       }
     } else {
-      console.log(`HTML请求失败，状态码: ${response.statusCode}`);
+      console.log('未能获取HTML内容');
     }
   } catch (e) {
     console.error(`HTML请求出错: ${e.message}`);
@@ -296,12 +371,24 @@ export default async function handler(req, res) {
     const videoId = mobileUrl.split('/').pop().split('?')[0];
     console.log(`提取的视频ID: ${videoId}`);
     
-    // 2. 尝试从API获取视频URL
-    let videoUrls = await getVideoUrlFromAPI(videoId);
+    // 2. 尝试多种方法获取视频URL
+    let videoUrls = [];
     
-    // 3. 如果API方法失败，尝试从HTML页面获取
+    // 方法1: 从API获取
+    const apiUrls = await getVideoUrlFromAPI(videoId);
+    videoUrls = [...videoUrls, ...apiUrls];
+    
+    // 方法2: 从HTML页面获取
     if (videoUrls.length === 0) {
-      videoUrls = await getVideoUrlFromHTML(mobileUrl);
+      const htmlUrls = await getVideoUrlFromHTML(mobileUrl);
+      videoUrls = [...videoUrls, ...htmlUrls];
+    }
+    
+    // 方法3: 尝试PC版网址
+    if (videoUrls.length === 0 && url !== mobileUrl) {
+      console.log('尝试从PC版网址获取视频');
+      const pcHtmlUrls = await getVideoUrlFromHTML(url);
+      videoUrls = [...videoUrls, ...pcHtmlUrls];
     }
     
     // 过滤并去重URL
@@ -323,7 +410,10 @@ export default async function handler(req, res) {
       const diagnosticInfo = {
         videoId,
         apisTried: [
+          `https://m.dongchedi.com/apis/video/get_video_play_info/?video_id=${videoId}`,
+          `https://m.dongchedi.com/apis/motor/video/info/?id=${videoId}`,
           `https://m.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
+          `https://www.dongchedi.com/motor/apis/video/info/?id=${videoId}`,
           `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
           `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`
         ],
