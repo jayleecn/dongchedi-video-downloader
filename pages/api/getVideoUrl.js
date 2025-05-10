@@ -2,6 +2,7 @@
 import { chromium } from 'playwright-chromium';
 import cors from 'cors';
 import { URL } from 'url';
+import axios from 'axios';
 
 // CORS中间件初始化
 const corsMiddleware = cors({
@@ -152,6 +153,27 @@ export default async function handler(req, res) {
         videoUrls.push(url);
         console.log(`发现视频URL: ${url}`);
       }
+      
+      // 监听可能包含视频信息的API响应
+      if (url.includes('/api/') || url.includes('/apis/')) {
+        try {
+          const text = await response.text();
+          try {
+            const json = JSON.parse(text);
+            const apiUrls = findVideoUrlsInObject(json);
+            for (const apiUrl of apiUrls) {
+              if (!videoUrls.includes(apiUrl)) {
+                videoUrls.push(apiUrl);
+                console.log(`从API响应中找到视频URL: ${apiUrl}`);
+              }
+            }
+          } catch (e) {
+            // 不是有效的JSON，忽略
+          }
+        } catch (e) {
+          // 无法获取响应文本，忽略
+        }
+      }
     });
     
     // 导航到目标页面
@@ -178,16 +200,43 @@ export default async function handler(req, res) {
         videoData.initialState = window.__INITIAL_STATE__;
       }
       
-      // 查找MP4相关字符串
-      const html = document.documentElement.innerHTML;
-      const mp4Regex = /"(https?:[^"]+\.mp4[^"]*)"/g;
-      const mp4Matches = html.match(mp4Regex) || [];
-      videoData.mp4Matches = mp4Matches.map(m => m.replace(/"/g, ''));
+      // 尝试提取新的页面状态格式
+      if (window.__APP_DATA__) {
+        videoData.appData = window.__APP_DATA__;
+      }
       
-      // 查找m3u8相关字符串
-      const m3u8Regex = /"(https?:[^"]+\.m3u8[^"]*)"/g;
-      const m3u8Matches = html.match(m3u8Regex) || [];
-      videoData.m3u8Matches = m3u8Matches.map(m => m.replace(/"/g, ''));
+      // 查找MP4相关字符串 - 增加更多匹配模式
+      const html = document.documentElement.innerHTML;
+      const mp4Patterns = [
+        /"(https?:[^"]+\.mp4[^"]*)"/g,
+        /'(https?:[^']+\.mp4[^']*)'/g,
+        /url:\s*['"]?(https?:[^'"\s]+\.mp4[^'"\s]*)['"]?/gi,
+        /src:\s*['"]?(https?:[^'"\s]+\.mp4[^'"\s]*)['"]?/gi,
+        /https?:[^"'\s]+\.mp4[^"'\s]*/g
+      ];
+      
+      videoData.mp4Matches = [];
+      for (const pattern of mp4Patterns) {
+        const matches = html.match(pattern) || [];
+        const cleanMatches = matches.map(m => m.replace(/['"]|url:|src:/gi, '').trim());
+        videoData.mp4Matches.push(...cleanMatches);
+      }
+      
+      // 查找m3u8相关字符串 - 增加更多匹配模式
+      const m3u8Patterns = [
+        /"(https?:[^"]+\.m3u8[^"]*)"/g,
+        /'(https?:[^']+\.m3u8[^']*)'/g,
+        /url:\s*['"]?(https?:[^'"\s]+\.m3u8[^'"\s]*)['"]?/gi,
+        /src:\s*['"]?(https?:[^'"\s]+\.m3u8[^'"\s]*)['"]?/gi,
+        /https?:[^"'\s]+\.m3u8[^"'\s]*/g
+      ];
+      
+      videoData.m3u8Matches = [];
+      for (const pattern of m3u8Patterns) {
+        const matches = html.match(pattern) || [];
+        const cleanMatches = matches.map(m => m.replace(/['"]|url:|src:/gi, '').trim());
+        videoData.m3u8Matches.push(...cleanMatches);
+      }
       
       return videoData;
     });
@@ -231,6 +280,34 @@ export default async function handler(req, res) {
       }
     }
     
+    // 尝试直接从页面URL中提取视频信息
+    try {
+      console.log('尝试从页面内容中提取视频信息');
+      const pageContent = await page.content();
+      
+      // 查找可能包含视频URL的JSON数据
+      const jsonDataRegex = /window\.__APP_DATA__\s*=\s*(\{.*?\});/s;
+      const jsonMatch = pageContent.match(jsonDataRegex);
+      
+      if (jsonMatch && jsonMatch[1]) {
+        try {
+          const appData = JSON.parse(jsonMatch[1]);
+          console.log('找到APP_DATA，正在提取视频URL');
+          const appDataUrls = findVideoUrlsInObject(appData);
+          for (const url of appDataUrls) {
+            if (!videoUrls.includes(url)) {
+              videoUrls.push(url);
+              console.log(`从APP_DATA中找到视频URL: ${url}`);
+            }
+          }
+        } catch (e) {
+          console.error('解析APP_DATA时出错:', e);
+        }
+      }
+    } catch (e) {
+      console.error('从页面内容提取视频信息时出错:', e);
+    }
+    
     // 如果没有找到视频URL，尝试查找特定的视频API
     if (videoUrls.length === 0) {
       const videoId = mobileUrl.split('/').pop().split('?')[0];
@@ -238,6 +315,12 @@ export default async function handler(req, res) {
         `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
         `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
         `https://www.dongchedi.com/api/vrms/video/get_video_play_info/?video_id=${videoId}`,
+        `https://www.dongchedi.com/apis/video/get_video_play_info/?video_id=${videoId}`,
+        `https://www.dongchedi.com/apis/vrms/video/get_video_play_info/?video_id=${videoId}`,
+        `https://www.dongchedi.com/apis/motor/video_info/?video_id=${videoId}`,
+        `https://m.dongchedi.com/apis/video/get_video_play_info/?video_id=${videoId}`,
+        `https://m.dongchedi.com/apis/vrms/video/get_video_play_info/?video_id=${videoId}`,
+        `https://m.dongchedi.com/apis/motor/video_info/?video_id=${videoId}`
       ];
       
       for (const apiUrl of apiUrls) {
@@ -253,10 +336,37 @@ export default async function handler(req, res) {
             for (const url of apiUrls) {
               if (!videoUrls.includes(url)) {
                 videoUrls.push(url);
+                console.log(`从API响应中找到视频URL: ${url}`);
               }
             }
           } catch (e) {
             console.log('无法解析API响应为JSON');
+          }
+          
+          // 如果仍然没有找到视频URL，尝试使用axios直接请求API
+          if (videoUrls.length === 0) {
+            try {
+              console.log(`尝试使用axios请求API: ${apiUrl}`);
+              const response = await axios.get(apiUrl, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+                  'Referer': mobileUrl,
+                  'Accept': 'application/json'
+                }
+              });
+              
+              if (response.data) {
+                const axiosUrls = findVideoUrlsInObject(response.data);
+                for (const url of axiosUrls) {
+                  if (!videoUrls.includes(url)) {
+                    videoUrls.push(url);
+                    console.log(`从axios API响应中找到视频URL: ${url}`);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error(`axios请求API时出错: ${e.message}`);
+            }
           }
         } catch (e) {
           console.error(`获取API时出错: ${e.message}`);

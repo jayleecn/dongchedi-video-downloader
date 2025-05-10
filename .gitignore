@@ -35,3 +35,13 @@ next-env.d.ts
 # 大型数据文件
 *.html
 js_data.json
+
+# Netlify 部署配置
+netlify.toml
+.netlify/
+windsurf_deployment.yaml
+
+# 本地开发和测试文件
+.vscode/
+.idea/
+*.log
