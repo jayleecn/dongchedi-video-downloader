@@ -1,5 +1,5 @@
 [build]
-  command = "npx playwright install chromium --with-deps && npm run build"
+  command = "npm run build"
   publish = ".next"
 
 [build.environment]

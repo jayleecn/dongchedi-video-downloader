@@ -97,112 +97,6 @@ function convertToMobileUrl(inputUrl) {
   }
 }
 
-// 使用纯HTTP请求方式提取视频URL
-async function extractVideoUrlsWithHttp(url) {
-  console.log(`尝试使用纯HTTP请求提取视频URL: ${url}`);
-  const videoUrls = [];
-  const videoId = url.split('/').pop().split('?')[0];
-  
-  // 尝试不同的API端点
-  const apiEndpoints = [
-    `https://www.dongchedi.com/motor/api/video_info/?video_id=${videoId}`,
-    `https://www.dongchedi.com/api/video/get_video_play_info/?video_id=${videoId}`,
-    `https://www.dongchedi.com/api/vrms/video/get_video_play_info/?video_id=${videoId}`,
-    `https://www.dongchedi.com/apis/video/get_video_play_info/?video_id=${videoId}`,
-    `https://www.dongchedi.com/apis/vrms/video/get_video_play_info/?video_id=${videoId}`,
-    `https://www.dongchedi.com/apis/motor/video_info/?video_id=${videoId}`,
-    `https://m.dongchedi.com/apis/video/get_video_play_info/?video_id=${videoId}`,
-    `https://m.dongchedi.com/apis/vrms/video/get_video_play_info/?video_id=${videoId}`,
-    `https://m.dongchedi.com/apis/motor/video_info/?video_id=${videoId}`
-  ];
-  
-  // 请求头
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
-    'Referer': url,
-    'Accept': 'application/json',
-    'Accept-Language': 'zh-CN,zh;q=0.9',
-    'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache'
-  };
-  
-  // 尝试直接获取页面内容
-  try {
-    console.log(`尝试直接获取页面内容: ${url}`);
-    const response = await axios.get(url, { headers });
-    const html = response.data;
-    
-    // 使用多种正则表达式提取视频URL
-    const patterns = [
-      /"(https?:[^"]+\.mp4[^"]*)"/g,
-      /'(https?:[^']+\.mp4[^']*)'/g,
-      /url:\s*['"]?(https?:[^'"\s]+\.mp4[^'"\s]*)['"]?/gi,
-      /src:\s*['"]?(https?:[^'"\s]+\.mp4[^'"\s]*)['"]?/gi,
-      /https?:[^"'\s]+\.mp4[^"'\s]*/g,
-      /"(https?:[^"]+\.m3u8[^"]*)"/g,
-      /'(https?:[^']+\.m3u8[^']*)'/g,
-      /url:\s*['"]?(https?:[^'"\s]+\.m3u8[^'"\s]*)['"]?/gi,
-      /src:\s*['"]?(https?:[^'"\s]+\.m3u8[^'"\s]*)['"]?/gi,
-      /https?:[^"'\s]+\.m3u8[^"'\s]*/g
-    ];
-    
-    for (const pattern of patterns) {
-      const matches = html.match(pattern) || [];
-      for (let match of matches) {
-        // 清理匹配结果
-        match = match.replace(/['"]|url:|src:/gi, '').trim();
-        if (match.startsWith('http') && !videoUrls.includes(match)) {
-          videoUrls.push(match);
-          console.log(`从页面内容中提取到视频URL: ${match}`);
-        }
-      }
-    }
-    
-    // 尝试提取JSON数据
-    const jsonDataRegex = /window\.__APP_DATA__\s*=\s*(\{.*?\});/s;
-    const jsonMatch = html.match(jsonDataRegex);
-    if (jsonMatch && jsonMatch[1]) {
-      try {
-        const appData = JSON.parse(jsonMatch[1]);
-        const appDataUrls = findVideoUrlsInObject(appData);
-        for (const url of appDataUrls) {
-          if (!videoUrls.includes(url)) {
-            videoUrls.push(url);
-            console.log(`从APP_DATA中提取到视频URL: ${url}`);
-          }
-        }
-      } catch (e) {
-        console.error('解析APP_DATA时出错:', e);
-      }
-    }
-  } catch (e) {
-    console.error(`获取页面内容时出错: ${e.message}`);
-  }
-  
-  // 如果从页面内容中没有提取到视频URL，尝试请求API
-  if (videoUrls.length === 0) {
-    for (const apiUrl of apiEndpoints) {
-      try {
-        console.log(`尝试请求API: ${apiUrl}`);
-        const response = await axios.get(apiUrl, { headers });
-        if (response.data) {
-          const apiUrls = findVideoUrlsInObject(response.data);
-          for (const url of apiUrls) {
-            if (!videoUrls.includes(url)) {
-              videoUrls.push(url);
-              console.log(`从API响应中提取到视频URL: ${url}`);
-            }
-          }
-        }
-      } catch (e) {
-        console.error(`请求API时出错: ${e.message}`);
-      }
-    }
-  }
-  
-  return videoUrls;
-}
-
 // 主API处理函数
 export default async function handler(req, res) {
   // 处理CORS
@@ -239,35 +133,15 @@ export default async function handler(req, res) {
   // 开始提取视频URL
   console.log(`开始处理URL: ${url}`);
   
-  // 初始化视频URL数组
-  const videoUrls = [];
-  
-  // 先尝试使用纯HTTP请求方式提取视频URL
-  const httpVideoUrls = await extractVideoUrlsWithHttp(mobileUrl);
-  if (httpVideoUrls.length > 0) {
-    console.log(`通过HTTP请求成功提取到${httpVideoUrls.length}个视频URL`);
-    return res.status(200).json({
-      success: true,
-      message: '成功获取视频URL',
-      data: {
-        videoUrls: httpVideoUrls,
-        original_url: url,
-        mobileUrl: mobileUrl !== url ? mobileUrl : null,
-        method: 'http'
-      }
-    });
-  }
-  
-  // 如果纯HTTP请求方式失败，尝试使用Playwright
   try {
     // 启动浏览器
-    console.log('尝试使用Playwright提取视频URL');
     const browser = await chromium.launch({
       headless: true,
     });
     const page = await browser.newPage();
     
     // 收集视频请求
+    const videoUrls = [];
     
     // 监听响应事件
     page.on('response', async (response) => {
